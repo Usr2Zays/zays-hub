@@ -435,7 +435,7 @@ local function bindCharacter(character)
 end
 
 --=====================================================================
--- ESP local : noms, distance, santé, rôle, contour et squelette R6/R15
+-- ESP local : noms, distance, santé, vrai rôle, contour et squelette R6/R15
 --=====================================================================
 
 -- Mets ici l'ID de ton groupe Roblox si tu veux afficher le rôle du groupe.
@@ -465,6 +465,7 @@ local function findRoleInContainer(container)
 		return nil
 	end
 
+	-- D'abord les noms de rôle connus.
 	for _, key in ipairs(ROLE_KEYS) do
 		local attributeRole = roleValueToText(container:GetAttribute(key))
 		if attributeRole then
@@ -474,6 +475,25 @@ local function findRoleInContainer(container)
 		local valueObject = container:FindFirstChild(key)
 		if valueObject and valueObject:IsA("ValueBase") then
 			local objectRole = roleValueToText(valueObject.Value)
+			if objectRole then
+				return objectRole
+			end
+		end
+	end
+
+	-- Puis n'importe quel Attribute/Value dont le nom contient "role".
+	for attributeName, attributeValue in pairs(container:GetAttributes()) do
+		if string.find(string.lower(attributeName), "role", 1, true) then
+			local attributeRole = roleValueToText(attributeValue)
+			if attributeRole then
+				return attributeRole
+			end
+		end
+	end
+
+	for _, child in ipairs(container:GetChildren()) do
+		if child:IsA("ValueBase") and string.find(string.lower(child.Name), "role", 1, true) then
+			local objectRole = roleValueToText(child.Value)
 			if objectRole then
 				return objectRole
 			end
@@ -511,11 +531,9 @@ local function getPlayerRole(player, character)
 		end
 	end
 
-	if player.Team then
-		return player.Team.Name
-	end
-
-	return "Aucun rôle"
+	-- IMPORTANT : ne jamais utiliser player.Team ici.
+	-- Une Team Roblox n'est pas forcément le rôle du joueur dans la partie.
+	return "Non détecté"
 end
 
 local espRecords = {}
@@ -1565,7 +1583,7 @@ end)
 createToggle(visualsPage, "Distance", "Distance en studs depuis ton personnage", "distanceEsp", function(enabled)
 	setEspFlag("distanceEsp", enabled)
 end)
-createToggle(visualsPage, "Roles", "Affiche Role/PlayerRole/TeamRole/Class/Job, rôle de groupe ou équipe", "roleEsp", function(enabled)
+createToggle(visualsPage, "Roles", "Affiche le vrai rôle détecté (Role/PlayerRole/TeamRole/Class/Job), sans utiliser la Team Roblox", "roleEsp", function(enabled)
 	setEspFlag("roleEsp", enabled)
 end)
 
