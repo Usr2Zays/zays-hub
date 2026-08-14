@@ -83,6 +83,7 @@ local state = {
 	skeletonEsp = false,
 	healthEsp = false,
 	distanceEsp = false,
+	roleEsp = false,
 }
 
 -- Roblox représente les touches par leur position QWERTY physique.
@@ -434,8 +435,88 @@ local function bindCharacter(character)
 end
 
 --=====================================================================
--- ESP local : noms, distance, santé, contour et squelette R6/R15
+-- ESP local : noms, distance, santé, rôle, contour et squelette R6/R15
 --=====================================================================
+
+-- Mets ici l'ID de ton groupe Roblox si tu veux afficher le rôle du groupe.
+-- Laisse 0 si ton jeu stocke déjà le rôle dans un Attribute/Value/leaderstats.
+local ROLE_GROUP_ID = 0
+
+local ROLE_KEYS = { "Role", "role", "PlayerRole", "playerRole", "TeamRole", "Class", "Job" }
+local groupRoleCache = setmetatable({}, { __mode = "k" })
+
+local function roleValueToText(value)
+	if value == nil then
+		return nil
+	end
+
+	local valueType = typeof(value)
+	if valueType == "string" then
+		return value ~= "" and value or nil
+	elseif valueType == "number" or valueType == "boolean" then
+		return tostring(value)
+	end
+
+	return nil
+end
+
+local function findRoleInContainer(container)
+	if not container then
+		return nil
+	end
+
+	for _, key in ipairs(ROLE_KEYS) do
+		local attributeRole = roleValueToText(container:GetAttribute(key))
+		if attributeRole then
+			return attributeRole
+		end
+
+		local valueObject = container:FindFirstChild(key)
+		if valueObject and valueObject:IsA("ValueBase") then
+			local objectRole = roleValueToText(valueObject.Value)
+			if objectRole then
+				return objectRole
+			end
+		end
+	end
+
+	return nil
+end
+
+local function getPlayerRole(player, character)
+	local role = findRoleInContainer(player)
+		or findRoleInContainer(character)
+		or findRoleInContainer(player:FindFirstChild("leaderstats"))
+
+	if role then
+		return role
+	end
+
+	if ROLE_GROUP_ID > 0 then
+		local groupRole = groupRoleCache[player]
+		if groupRole == nil then
+			local ok, result = pcall(function()
+				return player:GetRoleInGroup(ROLE_GROUP_ID)
+			end)
+			if ok and result and result ~= "" and result ~= "Guest" then
+				groupRole = result
+			else
+				groupRole = false
+			end
+			groupRoleCache[player] = groupRole
+		end
+
+		if groupRole then
+			return groupRole
+		end
+	end
+
+	if player.Team then
+		return player.Team.Name
+	end
+
+	return "Aucun rôle"
+end
 
 local espRecords = {}
 local espGeneration = {}
@@ -537,7 +618,7 @@ local function buildEspRecord(player, character)
 		billboard.Adornee = head
 		billboard.AlwaysOnTop = true
 		billboard.LightInfluence = 0
-		billboard.Size = UDim2.fromOffset(260, 68)
+		billboard.Size = UDim2.fromOffset(280, 86)
 		billboard.StudsOffsetWorldSpace = Vector3.new(0, 3.25, 0)
 		billboard.Enabled = false
 		billboard.Parent = screenGui
@@ -554,9 +635,23 @@ local function buildEspRecord(player, character)
 		nameLabel.Text = ""
 		nameLabel.Parent = billboard
 
+		local roleLabel = Instance.new("TextLabel")
+		roleLabel.Name = "RoleText"
+		roleLabel.Position = UDim2.fromOffset(0, 21)
+		roleLabel.Size = UDim2.new(1, 0, 0, 18)
+		roleLabel.BackgroundTransparency = 1
+		roleLabel.Font = Enum.Font.GothamBold
+		roleLabel.TextColor3 = THEME.AccentSoft
+		roleLabel.TextStrokeColor3 = THEME.AccentDark
+		roleLabel.TextStrokeTransparency = 0.2
+		roleLabel.TextSize = 13
+		roleLabel.Text = ""
+		roleLabel.Visible = false
+		roleLabel.Parent = billboard
+
 		local healthLabel = Instance.new("TextLabel")
 		healthLabel.Name = "HealthText"
-		healthLabel.Position = UDim2.fromOffset(0, 21)
+		healthLabel.Position = UDim2.fromOffset(0, 40)
 		healthLabel.Size = UDim2.new(1, 0, 0, 18)
 		healthLabel.BackgroundTransparency = 1
 		healthLabel.Font = Enum.Font.GothamMedium
@@ -570,7 +665,7 @@ local function buildEspRecord(player, character)
 		local healthBack = Instance.new("Frame")
 		healthBack.Name = "HealthBack"
 		healthBack.AnchorPoint = Vector2.new(0.5, 0)
-		healthBack.Position = UDim2.new(0.5, 0, 0, 43)
+		healthBack.Position = UDim2.new(0.5, 0, 0, 62)
 		healthBack.Size = UDim2.fromOffset(128, 7)
 		healthBack.BackgroundColor3 = THEME.Off
 		healthBack.BorderSizePixel = 0
@@ -607,6 +702,7 @@ local function buildEspRecord(player, character)
 			highlight = highlight,
 			billboard = billboard,
 			nameLabel = nameLabel,
+			roleLabel = roleLabel,
 			healthLabel = healthLabel,
 			healthBack = healthBack,
 			healthFill = healthFill,
@@ -618,8 +714,9 @@ end
 local function refreshAllEspVisibility()
 	for _, record in pairs(espRecords) do
 		record.highlight.Enabled = state.esp
-		record.billboard.Enabled = state.esp and (state.nameEsp or state.distanceEsp or state.healthEsp)
+		record.billboard.Enabled = state.esp and (state.nameEsp or state.distanceEsp or state.healthEsp or state.roleEsp)
 		record.nameLabel.Visible = state.esp and (state.nameEsp or state.distanceEsp)
+		record.roleLabel.Visible = state.esp and state.roleEsp
 		record.healthLabel.Visible = state.esp and state.healthEsp
 		record.healthBack.Visible = state.esp and state.healthEsp
 		for _, segment in ipairs(record.skeleton) do
@@ -1468,6 +1565,9 @@ end)
 createToggle(visualsPage, "Distance", "Distance en studs depuis ton personnage", "distanceEsp", function(enabled)
 	setEspFlag("distanceEsp", enabled)
 end)
+createToggle(visualsPage, "Roles", "Affiche Role/PlayerRole/TeamRole/Class/Job, rôle de groupe ou équipe", "roleEsp", function(enabled)
+	setEspFlag("roleEsp", enabled)
+end)
 
 -- Players
 createSectionHeader(playersPage, "Personnage local", "Les changements visuels restent uniquement sur ton client")
@@ -1825,7 +1925,7 @@ RunService.RenderStepped:Connect(function(deltaTime)
 			destroyEspRecord(player)
 		else
 			record.highlight.Enabled = state.esp
-			record.billboard.Enabled = state.esp and (state.nameEsp or state.distanceEsp or state.healthEsp)
+			record.billboard.Enabled = state.esp and (state.nameEsp or state.distanceEsp or state.healthEsp or state.roleEsp)
 
 			local distance = 0
 			if currentRoot and currentRoot.Parent then
@@ -1844,6 +1944,14 @@ RunService.RenderStepped:Connect(function(deltaTime)
 				record.nameLabel.Visible = true
 			else
 				record.nameLabel.Visible = false
+			end
+
+			if state.esp and state.roleEsp then
+				local role = getPlayerRole(player, character)
+				record.roleLabel.Text = "Rôle : " .. role
+				record.roleLabel.Visible = true
+			else
+				record.roleLabel.Visible = false
 			end
 
 			if state.esp and state.healthEsp then
