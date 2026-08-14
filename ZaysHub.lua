@@ -503,13 +503,47 @@ local function findRoleInContainer(container)
 	return nil
 end
 
+local function normalizeTeamName(teamName)
+	if not teamName or teamName == "" then
+		return nil
+	end
+
+	local lower = string.lower(teamName)
+
+	-- Noms courants des rôles type Murder Mystery.
+	if string.find(lower, "murder", 1, true)
+		or string.find(lower, "killer", 1, true)
+		or string.find(lower, "meurtr", 1, true) then
+		return "Murder"
+	elseif string.find(lower, "sheriff", 1, true)
+		or string.find(lower, "detective", 1, true) then
+		return "Sheriff"
+	elseif string.find(lower, "civil", 1, true)
+		or string.find(lower, "innocent", 1, true)
+		or string.find(lower, "innoc", 1, true) then
+		return "Civil"
+	end
+
+	-- Pour toute autre Team, garde simplement son vrai nom Roblox.
+	return teamName
+end
+
 local function getPlayerRole(player, character)
+	-- Priorité à la Team Roblox : c'est ce que l'ESP doit afficher.
+	if player.Team then
+		local teamName = normalizeTeamName(player.Team.Name)
+		if teamName then
+			return teamName
+		end
+	end
+
+	-- Fallback si le jeu n'utilise pas le service Teams.
 	local role = findRoleInContainer(player)
 		or findRoleInContainer(character)
 		or findRoleInContainer(player:FindFirstChild("leaderstats"))
 
 	if role then
-		return role
+		return normalizeTeamName(role) or role
 	end
 
 	if ROLE_GROUP_ID > 0 then
@@ -531,8 +565,6 @@ local function getPlayerRole(player, character)
 		end
 	end
 
-	-- IMPORTANT : ne jamais utiliser player.Team ici.
-	-- Une Team Roblox n'est pas forcément le rôle du joueur dans la partie.
 	return "Non détecté"
 end
 
@@ -1583,7 +1615,7 @@ end)
 createToggle(visualsPage, "Distance", "Distance en studs depuis ton personnage", "distanceEsp", function(enabled)
 	setEspFlag("distanceEsp", enabled)
 end)
-createToggle(visualsPage, "Roles", "Affiche le vrai rôle détecté (Role/PlayerRole/TeamRole/Class/Job), sans utiliser la Team Roblox", "roleEsp", function(enabled)
+createToggle(visualsPage, "Teams", "Affiche la Team Roblox du joueur (Murder / Sheriff / Civil), avec fallback sur Role/Class/Job", "roleEsp", function(enabled)
 	setEspFlag("roleEsp", enabled)
 end)
 
@@ -1683,7 +1715,8 @@ refreshPlayerList = function()
 		entry.BackgroundColor3 = THEME.PanelAlt
 		entry.BorderSizePixel = 0
 		entry.Font = Enum.Font.GothamMedium
-		entry.Text = "  " .. player.DisplayName .. "  (@" .. player.Name .. ")"
+		local teamName = getPlayerRole(player, player.Character)
+		entry.Text = "  " .. player.DisplayName .. "  (@" .. player.Name .. ")  |  " .. teamName
 		entry.TextColor3 = THEME.Text
 		entry.TextSize = 11
 		entry.TextXAlignment = Enum.TextXAlignment.Left
@@ -1966,7 +1999,7 @@ RunService.RenderStepped:Connect(function(deltaTime)
 
 			if state.esp and state.roleEsp then
 				local role = getPlayerRole(player, character)
-				record.roleLabel.Text = "Rôle : " .. role
+				record.roleLabel.Text = "Team : " .. role
 				record.roleLabel.Visible = true
 			else
 				record.roleLabel.Visible = false
